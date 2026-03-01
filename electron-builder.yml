@@ -1,0 +1,38 @@
+appId: com.spacem.vrsml
+productName: VRS-ML
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+extraMetadata:
+  main: dist/main.js
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-Setup.${ext}
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+    filter:
+      - "**/*"
+
+publish:
+  provider: github
+  owner: spacem
+  repo: vrs-ml-app
+  releaseType: release  # Forces it to be a public release, not a draft

@@ -1,0 +1,42 @@
+import { contextBridge, ipcRenderer } from "electron";
+
+const api = {
+  platform: process.platform,
+  isElectron: true,
+
+  getVersions: () => ipcRenderer.invoke("get-versions"),
+
+  selectFolder: () => ipcRenderer.invoke("select-folder"),
+  selectFiles: () => ipcRenderer.invoke("select-files"),
+  selectFilesOrFolder: () => ipcRenderer.invoke("select-files-or-folder"),
+  readDir: (path: string) => ipcRenderer.invoke("read-dir", path),
+  getFileStream: (path: string) => ipcRenderer.invoke("get-file-stream", path),
+  fileExists: (path: string) => ipcRenderer.invoke("file-exists", path),
+  readFile: (path: string) => ipcRenderer.invoke("read-file", path),
+
+  onFileChange: (callback: (event: { type: string; path: string }) => void) => {
+    ipcRenderer.on("file-change", (_event, data) => callback(data));
+  },
+
+  onUpdateAvailable: (callback: (info: unknown) => void) => {
+    ipcRenderer.on("update-available", (_event, info) => callback(info));
+  },
+
+  onDownloadProgress: (callback: (progress: unknown) => void) => {
+    ipcRenderer.on("download-progress", (_event, progress) =>
+      callback(progress),
+    );
+  },
+
+  onUpdateDownloaded: (callback: (info: unknown) => void) => {
+    ipcRenderer.on("update-downloaded", (_event, info) => callback(info));
+  },
+};
+
+contextBridge.exposeInMainWorld("electronAPI", api);
+
+declare global {
+  interface Window {
+    electronAPI: typeof api;
+  }
+}
