@@ -237,7 +237,8 @@ function setupAutoUpdater() {
       .showMessageBox(mainWindow!, {
         type: "info",
         title: "Update Ready",
-        message: "The update has been downloaded. Restart now to apply the update?",
+        message:
+          "The update has been downloaded. Restart now to apply the update?",
         buttons: ["Restart Now", "Later"],
       })
       .then((result) => {
@@ -254,14 +255,17 @@ function setupAutoUpdater() {
     autoUpdater.checkForUpdates().catch((err) => {
       log.error("Failed to check for updates:", err);
     });
-    
+
     // Check every hour
-    setInterval(() => {
-      log.info("Checking for updates (periodic)");
-      autoUpdater.checkForUpdates().catch((err) => {
-        log.error("Failed to check for updates:", err);
-      });
-    }, 60 * 60 * 1000);
+    setInterval(
+      () => {
+        log.info("Checking for updates (periodic)");
+        autoUpdater.checkForUpdates().catch((err) => {
+          log.error("Failed to check for updates:", err);
+        });
+      },
+      60 * 60 * 1000,
+    );
   }
 }
 
@@ -299,8 +303,7 @@ function setupGlobalShortcuts() {
       mainWindow?.webContents.reload();
     });
     globalShortcut.register("F5", () => {
-   
-     mainWindow?.webContents.reload();
+      mainWindow?.webContents.reload();
     });
     globalShortcut.register("F12", () => {
       mainWindow?.webContents.toggleDevTools();

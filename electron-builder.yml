@@ -35,4 +35,4 @@ publish:
   provider: github
   owner: spacem
   repo: vrs-ml-app
-  releaseType: release  # Forces it to be a public release, not a draft
+  releaseType: release # Forces it to be a public release, not a draft
