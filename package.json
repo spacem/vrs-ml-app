@@ -1,6 +1,6 @@
 {
   "name": "vrs-ml-app",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "VRS-ML Desktop Application",
   "main": "dist/main.js",
   "author": "spacem",
