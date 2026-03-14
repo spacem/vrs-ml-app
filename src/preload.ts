@@ -5,6 +5,9 @@ const api = {
   isElectron: true,
 
   getVersions: () => ipcRenderer.invoke("get-versions"),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  downloadUpdate: () => ipcRenderer.invoke("download-update"),
+  installUpdate: () => ipcRenderer.invoke("install-update"),
 
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   selectFiles: () => ipcRenderer.invoke("select-files"),

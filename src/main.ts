@@ -80,6 +80,35 @@ function setupIpcHandlers() {
     };
   });
 
+  ipcMain.handle("check-for-updates", async () => {
+    try {
+      return await autoUpdater.checkForUpdates();
+    } catch (err) {
+      log.error("check-for-updates failed", err);
+      throw err;
+    }
+  });
+
+  ipcMain.handle("download-update", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return true;
+    } catch (err) {
+      log.error("download-update failed", err);
+      throw err;
+    }
+  });
+
+  ipcMain.handle("install-update", async () => {
+    try {
+      autoUpdater.quitAndInstall();
+      return true;
+    } catch (err) {
+      log.error("install-update failed", err);
+      throw err;
+    }
+  });
+
   ipcMain.handle("select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       properties: ["openDirectory"],
