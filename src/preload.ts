@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import path from "path";
 
 const api = {
   platform: process.platform,
@@ -16,6 +17,8 @@ const api = {
   getFileStream: (path: string) => ipcRenderer.invoke("get-file-stream", path),
   fileExists: (path: string) => ipcRenderer.invoke("file-exists", path),
   readFile: (path: string) => ipcRenderer.invoke("read-file", path),
+  readMetadata: (url: string) => ipcRenderer.invoke("read-metadata", url),
+  getUrl: (path: string) => ipcRenderer.invoke("get-url", path),
 
   onFileChange: (callback: (event: { type: string; path: string }) => void) => {
     ipcRenderer.on("file-change", (_event, data) => callback(data));
