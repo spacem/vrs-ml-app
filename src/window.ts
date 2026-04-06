@@ -21,17 +21,13 @@ export function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     icon: iconPath,
+    show: true, // Always show for tests
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
       autoplayPolicy: "no-user-gesture-required",
     },
-    show: false,
-  });
-
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
   });
 
   if (isDev) {

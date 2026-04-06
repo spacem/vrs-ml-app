@@ -5,6 +5,17 @@ import * as path from "path";
 import * as fs from "fs";
 import { getMainWindow } from "./window";
 import { pathToFileURL, fileURLToPath } from "url";
+import { TranscodeManager } from "./transcoding/TranscodeManager";
+import { TranscodingConfig } from "./transcoding/types";
+
+const transcodeManager: TranscodeManager = new TranscodeManager({
+  enabled: false,
+  mode: "local",
+  encoderPath: "",
+  gpuAcceleration: true,
+  maxVideoHeight: null,
+  outputDirectory: "",
+});
 
 export function setupIpcHandlers(): void {
   ipcMain.handle("get-versions", () => {
@@ -190,4 +201,94 @@ export function setupIpcHandlers(): void {
   ipcMain.handle("get-url", async (_event, filePath: string) => {
     return pathToFileURL(filePath).href.replace("file:///", "stream:///");
   });
+
+  // Transcoding IPC handlers
+  // Direct transcoding - no queue, returns result synchronously
+  ipcMain.handle(
+    "transcode-file",
+    async (
+      _event,
+      {
+        fileId,
+        inputPath,
+        config,
+      }: { fileId: string; inputPath: string; config: TranscodingConfig },
+    ) => {
+      try {
+        transcodeManager.updateConfig(config);
+        const result = await transcodeManager.transcodeFile(fileId, inputPath);
+        return result;
+      } catch (err) {
+        log.error("transcode-file failed", err);
+        return {
+          success: false,
+          outputPath: null,
+          error: (err as Error).message,
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "cancel-transcoding",
+    async (_event, { fileId }: { fileId: string }) => {
+      try {
+        return await transcodeManager.cancelTranscoding(fileId);
+      } catch (err) {
+        log.error("cancel-transcoding failed", err);
+        return { cancelled: false, error: (err as Error).message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "test-gpu-encoder",
+    async (
+      _event,
+      {
+        encoderName,
+        config,
+      }: { encoderName: string; config: TranscodingConfig },
+    ) => {
+      try {
+        transcodeManager.updateConfig(config);
+        return await transcodeManager.testGpuEncoder(encoderName);
+      } catch (err) {
+        log.error("test-gpu-encoder failed", err);
+        return { supported: false };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "test-ffmpeg-path",
+    async (
+      _event,
+      {
+        encoderPath,
+        config,
+      }: { encoderPath: string; config: TranscodingConfig },
+    ) => {
+      try {
+        transcodeManager.updateConfig(config);
+        return await transcodeManager.testFfmpegPath(encoderPath);
+      } catch (err) {
+        log.error("test-ffmpeg-path failed", err);
+        return { success: false, version: null };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "delete-file",
+    async (_event, { filePath }: { filePath: string }) => {
+      try {
+        fs.unlink(filePath, () => {});
+        return { success: true };
+      } catch (err) {
+        log.error("delete-file failed", err);
+        return { success: false, error: (err as Error).message };
+      }
+    },
+  );
 }

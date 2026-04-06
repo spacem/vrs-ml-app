@@ -1,6 +1,6 @@
 {
   "name": "vrs-ml-app",
-  "version": "1.0.31",
+  "version": "1.0.39",
   "description": "VRS-ML Desktop Application",
   "main": "dist/main.js",
   "author": "spacem",
@@ -11,12 +11,6 @@
     "start": "tsc && cross-env NODE_ENV=development electron . --enable-logging",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild"
-    ]
   },
   "build": {
     "extends": "electron-builder.yml"

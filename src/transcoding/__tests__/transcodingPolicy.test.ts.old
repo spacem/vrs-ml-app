@@ -1,0 +1,154 @@
+import {
+  classifyFile,
+  needsTranscodingForMode,
+  selectVideoCodecArg,
+  selectAudioCodecArg,
+  SKIP_EXTENSIONS,
+  EVAL_EXTENSIONS,
+  PASSTHROUGH_VIDEO_CODECS,
+  PASSTHROUGH_AUDIO_CODECS,
+} from "../transcodingPolicy";
+
+describe("classifyFile", () => {
+  test("classifies audio extensions as skip", () => {
+    expect(classifyFile("song.mp3")).toBe("skip");
+    expect(classifyFile("song.flac")).toBe("skip");
+    expect(classifyFile("song.m4a")).toBe("skip");
+    expect(classifyFile("song.wav")).toBe("skip");
+  });
+
+  test("classifies video extensions as evaluate", () => {
+    expect(classifyFile("video.mp4")).toBe("evaluate");
+    expect(classifyFile("video.mov")).toBe("evaluate");
+    expect(classifyFile("video.mkv")).toBe("evaluate");
+    expect(classifyFile("video.avi")).toBe("evaluate");
+  });
+
+  test("classifies unknown extensions as evaluate", () => {
+    expect(classifyFile("file.xyz")).toBe("evaluate");
+    expect(classifyFile("file.unknown")).toBe("evaluate");
+  });
+
+  test("is case-insensitive", () => {
+    expect(classifyFile("SONG.MP3")).toBe("skip");
+    expect(classifyFile("VIDEO.MP4")).toBe("evaluate");
+  });
+});
+
+describe("needsTranscodingForMode - local", () => {
+  const mode = "local";
+
+  test("returns false when both codecs are in passthrough lists", () => {
+    const result = needsTranscodingForMode("h264", "aac", "mp4", mode);
+    expect(result).toBe(false);
+  });
+
+  test("returns false when video codec is passthrough and no audio", () => {
+    const result = needsTranscodingForMode("hevc", null, "mkv", mode);
+    expect(result).toBe(false);
+  });
+
+  test("returns true when video codec is not in passthrough list", () => {
+    const result = needsTranscodingForMode("mpeg2", "aac", "mpg", mode);
+    expect(result).toBe(true);
+  });
+
+  test("returns true when audio codec is not in passthrough list", () => {
+    const result = needsTranscodingForMode("h264", "dts", "mkv", mode);
+    expect(result).toBe(true);
+  });
+});
+
+describe("needsTranscodingForMode - compatibility", () => {
+  const mode = "compatibility";
+
+  test("returns false when in mp4 container with compatible codecs", () => {
+    const result = needsTranscodingForMode("h264", "aac", "mp4", mode);
+    expect(result).toBe(false);
+  });
+
+  test("returns false when in mov container with compatible codecs", () => {
+    const result = needsTranscodingForMode("h264", "aac", "mov", mode);
+    expect(result).toBe(false);
+  });
+
+  test("returns true when not in mp4/mov container", () => {
+    const result = needsTranscodingForMode("h264", "aac", "mkv", mode);
+    expect(result).toBe(true);
+  });
+
+  test("returns true when video codec not compatible even in mp4", () => {
+    const result = needsTranscodingForMode("mpeg2", "aac", "mp4", mode);
+    expect(result).toBe(true);
+  });
+
+  test("returns true when audio codec not compatible even in mp4", () => {
+    const result = needsTranscodingForMode("h264", "dts", "mp4", mode);
+    expect(result).toBe(true);
+  });
+});
+
+describe("selectVideoCodecArg", () => {
+  test("returns copy when codec is in passthrough list", () => {
+    expect(selectVideoCodecArg("h264", null)).toBe("copy");
+    expect(selectVideoCodecArg("hevc", null)).toBe("copy");
+    expect(selectVideoCodecArg("av1", null)).toBe("copy");
+  });
+
+  test("returns gpu encoder when provided and codec needs re-encode", () => {
+    expect(selectVideoCodecArg("mpeg2", "h264_nvenc")).toBe("h264_nvenc");
+    expect(selectVideoCodecArg("mpeg2", "h264_amf")).toBe("h264_amf");
+  });
+
+  test("returns libx264 when no gpu encoder and codec needs re-encode", () => {
+    expect(selectVideoCodecArg("mpeg2", null)).toBe("libx264");
+    expect(selectVideoCodecArg(null, null)).toBe("libx264");
+  });
+});
+
+describe("selectAudioCodecArg", () => {
+  test("returns copy when codec is in passthrough list", () => {
+    expect(selectAudioCodecArg("aac")).toBe("copy");
+    expect(selectAudioCodecArg("alac")).toBe("copy");
+    expect(selectAudioCodecArg("mp3")).toBe("copy");
+    expect(selectAudioCodecArg("opus")).toBe("copy");
+    expect(selectAudioCodecArg("vorbis")).toBe("copy");
+  });
+
+  test("returns alac when codec needs re-encode", () => {
+    expect(selectAudioCodecArg("dts")).toBe("alac");
+    expect(selectAudioCodecArg("ac3")).toBe("alac");
+    expect(selectAudioCodecArg(null)).toBe("alac");
+  });
+});
+
+describe("Codec sets", () => {
+  test("SKIP_EXTENSIONS contains expected audio formats", () => {
+    expect(SKIP_EXTENSIONS.has("mp3")).toBe(true);
+    expect(SKIP_EXTENSIONS.has("flac")).toBe(true);
+    expect(SKIP_EXTENSIONS.has("m4a")).toBe(true);
+    expect(SKIP_EXTENSIONS.has("wav")).toBe(true);
+  });
+
+  test("EVAL_EXTENSIONS contains expected video formats", () => {
+    expect(EVAL_EXTENSIONS.has("mp4")).toBe(true);
+    expect(EVAL_EXTENSIONS.has("mkv")).toBe(true);
+    expect(EVAL_EXTENSIONS.has("avi")).toBe(true);
+  });
+
+  test("PASSTHROUGH_VIDEO_CODECS contains expected codecs", () => {
+    expect(PASSTHROUGH_VIDEO_CODECS.has("h264")).toBe(true);
+    expect(PASSTHROUGH_VIDEO_CODECS.has("hevc")).toBe(true);
+    expect(PASSTHROUGH_VIDEO_CODECS.has("av1")).toBe(true);
+    expect(PASSTHROUGH_VIDEO_CODECS.has("vp8")).toBe(true);
+    expect(PASSTHROUGH_VIDEO_CODECS.has("vp9")).toBe(true);
+  });
+
+  test("PASSTHROUGH_AUDIO_CODECS contains expected codecs", () => {
+    expect(PASSTHROUGH_AUDIO_CODECS.has("aac")).toBe(true);
+    expect(PASSTHROUGH_AUDIO_CODECS.has("alac")).toBe(true);
+    expect(PASSTHROUGH_AUDIO_CODECS.has("mp3")).toBe(true);
+    expect(PASSTHROUGH_AUDIO_CODECS.has("opus")).toBe(true);
+    expect(PASSTHROUGH_AUDIO_CODECS.has("vorbis")).toBe(true);
+  });
+});

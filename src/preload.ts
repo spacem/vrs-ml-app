@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import path from "path";
+import { TranscodingConfig } from "./transcoding/types";
 
 const api = {
   platform: process.platform,
@@ -37,6 +38,21 @@ const api = {
   onUpdateDownloaded: (callback: (info: unknown) => void) => {
     ipcRenderer.on("update-downloaded", (_event, info) => callback(info));
   },
+
+  // Transcoding API
+  transcodeFile: (
+    fileId: string,
+    inputPath: string,
+    config: TranscodingConfig,
+  ) => ipcRenderer.invoke("transcode-file", { fileId, inputPath, config }),
+  cancelTranscoding: (fileId: string) =>
+    ipcRenderer.invoke("cancel-transcoding", { fileId }),
+  testGpuEncoder: (encoderName: string, config: TranscodingConfig) =>
+    ipcRenderer.invoke("test-gpu-encoder", { encoderName, config }),
+  testFfmpegPath: (encoderPath: string, config: TranscodingConfig) =>
+    ipcRenderer.invoke("test-ffmpeg-path", { encoderPath, config }),
+  deleteFile: (filePath: string) =>
+    ipcRenderer.invoke("delete-file", { filePath }),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);
