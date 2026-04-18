@@ -1,6 +1,6 @@
 {
   "name": "vrs-ml-app",
-  "version": "1.0.39",
+  "version": "1.0.45",
   "description": "VRS-ML Desktop Application",
   "main": "dist/main.js",
   "author": "spacem",
@@ -10,12 +10,14 @@
     "build": "tsc",
     "start": "tsc && cross-env NODE_ENV=development electron . --enable-logging",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "type:check": "tsc --noEmit"
   },
   "build": {
     "extends": "electron-builder.yml"
   },
   "dependencies": {
+    "@vrs/file-id": "workspace:*",
     "electron-log": "^5.2.4",
     "electron-updater": "^6.3.9",
     "music-metadata": "^11.12.1",

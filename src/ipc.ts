@@ -7,6 +7,7 @@ import { getMainWindow } from "./window";
 import { pathToFileURL, fileURLToPath } from "url";
 import { TranscodeManager } from "./transcoding/TranscodeManager";
 import { TranscodingConfig } from "./transcoding/types";
+import { idFromPath } from "@vrs/file-id/node";
 
 const transcodeManager: TranscodeManager = new TranscodeManager({
   enabled: false,
@@ -145,13 +146,13 @@ export function setupIpcHandlers(): void {
       );
     } catch (err) {
       log.error("Error reading directory:", err);
-      return [];
+      throw err;
     }
   });
 
-  ipcMain.handle("get-file-stream", async () => {
+  ipcMain.handle("get-storage-id", async (_event, filePath: string) => {
     // Electron can't transfer Node streams via IPC easily, so return null to fall back to URL fetch
-    return null;
+    return idFromPath(filePath);
   });
 
   ipcMain.handle("read-file", async (_event, filePath: string) => {
@@ -209,14 +210,17 @@ export function setupIpcHandlers(): void {
     async (
       _event,
       {
-        fileId,
+        storageId,
         inputPath,
         config,
-      }: { fileId: string; inputPath: string; config: TranscodingConfig },
+      }: { storageId: string; inputPath: string; config: TranscodingConfig },
     ) => {
       try {
         transcodeManager.updateConfig(config);
-        const result = await transcodeManager.transcodeFile(fileId, inputPath);
+        const result = await transcodeManager.transcodeFile(
+          storageId,
+          inputPath,
+        );
         return result;
       } catch (err) {
         log.error("transcode-file failed", err);
@@ -231,9 +235,9 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle(
     "cancel-transcoding",
-    async (_event, { fileId }: { fileId: string }) => {
+    async (_event, { storageId }: { storageId: string }) => {
       try {
-        return await transcodeManager.cancelTranscoding(fileId);
+        return await transcodeManager.cancelTranscoding(storageId);
       } catch (err) {
         log.error("cancel-transcoding failed", err);
         return { cancelled: false, error: (err as Error).message };

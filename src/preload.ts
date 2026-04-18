@@ -15,7 +15,7 @@ const api = {
   selectFiles: () => ipcRenderer.invoke("select-files"),
   selectFilesOrFolder: () => ipcRenderer.invoke("select-files-or-folder"),
   readDir: (path: string) => ipcRenderer.invoke("read-dir", path),
-  getFileStream: (path: string) => ipcRenderer.invoke("get-file-stream", path),
+  getStorageId: (path: string) => ipcRenderer.invoke("get-storage-id", path),
   fileExists: (path: string) => ipcRenderer.invoke("file-exists", path),
   readFile: (path: string) => ipcRenderer.invoke("read-file", path),
   readMetadata: (url: string) => ipcRenderer.invoke("read-metadata", url),
@@ -41,12 +41,12 @@ const api = {
 
   // Transcoding API
   transcodeFile: (
-    fileId: string,
+    storageId: string,
     inputPath: string,
     config: TranscodingConfig,
-  ) => ipcRenderer.invoke("transcode-file", { fileId, inputPath, config }),
-  cancelTranscoding: (fileId: string) =>
-    ipcRenderer.invoke("cancel-transcoding", { fileId }),
+  ) => ipcRenderer.invoke("transcode-file", { storageId, inputPath, config }),
+  cancelTranscoding: (storageId: string) =>
+    ipcRenderer.invoke("cancel-transcoding", { storageId }),
   testGpuEncoder: (encoderName: string, config: TranscodingConfig) =>
     ipcRenderer.invoke("test-gpu-encoder", { encoderName, config }),
   testFfmpegPath: (encoderPath: string, config: TranscodingConfig) =>

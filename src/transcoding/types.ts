@@ -18,7 +18,7 @@ export type TranscodeJobStatus =
 
 export interface TranscodeJob {
   id: string;
-  fileId: string;
+  storageId: string;
   inputPath: string;
   outputPath: string;
   status: TranscodeJobStatus;
@@ -28,7 +28,7 @@ export interface TranscodeJob {
 }
 
 export interface TranscodeProgress {
-  fileId: string;
+  storageId: string;
   percent: number;
   stage: string;
 }

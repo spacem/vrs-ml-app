@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import log from "electron-log";
 import {
   TranscodingConfig,
@@ -33,30 +33,40 @@ export class TranscodeManager {
     this.config = config;
   }
 
-  private resolveFfmpegPath(): string {
+  private async resolveFfmpegPath(): Promise<string> {
     const encoderPath = this.config.encoderPath?.trim();
     if (!encoderPath) return "ffmpeg";
 
-    // If it's a directory, append ffmpeg.exe
-    const stats = fs.statSync(encoderPath, { throwIfNoEntry: false });
-    if (stats?.isDirectory()) {
-      return path.join(
-        encoderPath,
-        process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
-      );
+    try {
+      // If it's a directory, append ffmpeg.exe
+      const stats = await fs.stat(encoderPath);
+      if (stats?.isDirectory()) {
+        return path.join(
+          encoderPath,
+          process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
+        );
+      }
+    } catch (e) {
+      // Missing path should not break transcoding setup; fall back to raw path/PATH resolution.
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        logger.error("Error resolving ffmpeg path", {
+          encoderPath,
+          error: (e as Error).message,
+        });
+      }
     }
 
     // If it's a file path, use as-is
     return encoderPath;
   }
 
-  private resolveFfprobePath(): string {
+  private async resolveFfprobePath(): Promise<string> {
     const encoderPath = this.config.encoderPath?.trim();
     if (!encoderPath) return "ffprobe";
 
     try {
       // If it's a directory, append ffprobe.exe
-      const stats = fs.statSync(encoderPath, { throwIfNoEntry: false });
+      const stats = await fs.stat(encoderPath);
       if (stats?.isDirectory()) {
         const ffprobePath = path.join(
           encoderPath,
@@ -78,7 +88,12 @@ export class TranscodeManager {
           (process.platform === "win32" ? ".exe" : ""),
       );
 
-      if (fs.existsSync(candidate)) {
+      if (
+        await fs
+          .access(candidate)
+          .then(() => true)
+          .catch(() => false)
+      ) {
         logger.info("Resolved ffprobe from ffmpeg path", { candidate });
         return candidate;
       }
@@ -94,7 +109,7 @@ export class TranscodeManager {
   }
 
   private async analyzeFile(filePath: string): Promise<FileAnalysisResult> {
-    const ffprobePath = this.resolveFfprobePath();
+    const ffprobePath = await this.resolveFfprobePath();
     const args = [
       "-v",
       "quiet",
@@ -228,7 +243,7 @@ export class TranscodeManager {
   }
 
   async testGpuEncoder(encoderName: string): Promise<{ supported: boolean }> {
-    const ffmpegPath = this.resolveFfmpegPath();
+    const ffmpegPath = await this.resolveFfmpegPath();
 
     return new Promise((resolve) => {
       const proc = spawn(ffmpegPath, [
@@ -258,14 +273,23 @@ export class TranscodeManager {
   async testFfmpegPath(
     encoderPath: string,
   ): Promise<{ success: boolean; version: string | null }> {
-    // Handle directory path - append ffmpeg.exe
-    let ffmpegPath = encoderPath || "ffmpeg";
-    const stats = fs.statSync(encoderPath, { throwIfNoEntry: false });
-    if (stats?.isDirectory()) {
-      ffmpegPath = path.join(
-        encoderPath,
-        process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
-      );
+    // Handle directory path - append ffmpeg binary name
+    const configuredPath = encoderPath?.trim();
+    let ffmpegPath = configuredPath || "ffmpeg";
+
+    if (configuredPath) {
+      try {
+        const stats = await fs.stat(configuredPath);
+        if (stats?.isDirectory()) {
+          ffmpegPath = path.join(
+            configuredPath,
+            process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
+          );
+        }
+      } catch {
+        // Keep configured path and let spawn() surface runtime validation result.
+        return { success: false, version: null };
+      }
     }
 
     return new Promise((resolve) => {
@@ -288,30 +312,24 @@ export class TranscodeManager {
     });
   }
 
-  async transcodeFile(
-    fileId: string,
+  async needsTranscoding(
+    storageId: string,
     inputPath: string,
-  ): Promise<TranscodeResult> {
-    console.log(
-      `[TranscodeManager] transcodeFile called: fileId=${fileId}, inputPath=${inputPath}, config=`,
-      this.config,
-    );
-    const outputPath = `${this.config.outputDirectory}/${fileId}_transcoded_${Date.now()}.mp4`;
-    logger.info("Starting transcode", { fileId, inputPath, outputPath });
-
+    analysisOverride?: FileAnalysisResult,
+  ): Promise<boolean> {
     const classification = classifyFile(inputPath);
     if (classification === "skip") {
-      logger.info("File in skip list, skipping transcode", { fileId });
-      return { success: true, outputPath: null, error: null };
+      logger.info("File in skip list, skipping transcode", { storageId });
+      return false;
     }
 
-    const analysis = await this.analyzeFile(inputPath);
+    const analysis = analysisOverride || (await this.analyzeFile(inputPath));
     if (analysis.error) {
       logger.error("Analysis failed, treating as skip", {
-        fileId,
+        storageId,
         error: analysis.error,
       });
-      return { success: true, outputPath: null, error: null };
+      return false;
     }
 
     const needsTranscoding = needsTranscodingForMode(
@@ -320,26 +338,73 @@ export class TranscodeManager {
       analysis.containerFormat,
       this.config.mode,
     );
-
     logger.info("Analysis result", {
-      fileId,
+      storageId,
       videoCodec: analysis.videoCodec,
       audioCodec: analysis.audioCodec,
       containerFormat: analysis.containerFormat,
       mode: this.config.mode,
       needsTranscoding,
     });
+    return needsTranscoding;
+  }
+
+  async transcodeFile(
+    storageId: string,
+    inputPath: string,
+  ): Promise<TranscodeResult> {
+    console.log(
+      `[TranscodeManager] transcodeFile called: storageId=${storageId}, inputPath=${inputPath}, config=`,
+      this.config,
+    );
+
+    // see if existing exists and is compatible before starting a new transcode
+    try {
+      const existingFiles = await fs.readdir(this.config.outputDirectory);
+      const existingFile = existingFiles.filter((f) =>
+        f.startsWith(`${storageId}_transcoded_`),
+      );
+      for (const file of existingFile) {
+        const existingPath = path.join(this.config.outputDirectory, file);
+        if (!(await this.needsTranscoding(storageId, existingPath))) {
+          logger.info("Found existing compatible transcoded file, reusing", {
+            storageId,
+            outputPath: existingPath,
+          });
+          return { success: true, outputPath: existingPath, error: null };
+        }
+      }
+    } catch (e) {
+      logger.error("Error checking existing transcoded files", {
+        storageId,
+        error: (e as Error).message,
+      });
+    }
+
+    const outputPath = path.join(
+      this.config.outputDirectory,
+      `${storageId}_transcoded_${Date.now()}.mp4`,
+    );
+    const analysis = await this.analyzeFile(inputPath);
+    const needsTranscoding = await this.needsTranscoding(
+      storageId,
+      inputPath,
+      analysis,
+    );
 
     if (!needsTranscoding) {
-      logger.info("File already compatible, no transcoding needed", { fileId });
+      logger.info("File already compatible, no transcoding needed", {
+        storageId,
+      });
       return { success: true, outputPath: null, error: null };
     }
 
+    logger.info("Starting transcode", { storageId, inputPath, outputPath });
     const gpuEncoder = await this.resolveGpuEncoder();
     const videoArg = selectVideoCodecArg(analysis.videoCodec, gpuEncoder);
     const audioArg = selectAudioCodecArg(analysis.audioCodec);
 
-    const ffmpegPath = this.resolveFfmpegPath();
+    const ffmpegPath = await this.resolveFfmpegPath();
 
     const initialHwArg =
       gpuEncoder && videoArg != "copy" ? ["-hwaccel", "cuda"] : [];
@@ -368,8 +433,10 @@ export class TranscodeManager {
     // Ensure output directory exists
     try {
       const outputDir = path.dirname(outputPath);
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
+      try {
+        await fs.access(outputDir);
+      } catch {
+        await fs.mkdir(outputDir, { recursive: true });
         logger.info("Created output directory", { outputDir });
       }
     } catch (e) {
@@ -387,18 +454,7 @@ export class TranscodeManager {
     return new Promise((resolve) => {
       const proc = spawn(ffmpegPath, args);
       console.log(`Launching with: ${ffmpegPath} ${args.join(" ")}`);
-      this.processes.set(fileId, proc);
-
-      // Lower process priority
-      // disabling this, we want it to be fast and are only doing one at a time
-      // if (process.platform === "win32") {
-      //   spawn("powershell", [
-      //     "-Command",
-      //     `Get-Process -Id ${proc.pid} | ForEach-Object { $_.PriorityClass = 'BelowNormal' }`,
-      //   ]);
-      // } else {
-      //   spawn("renice", ["-n", "10", String(proc.pid)]);
-      // }
+      this.processes.set(storageId, proc);
 
       let stderr = "";
 
@@ -407,15 +463,15 @@ export class TranscodeManager {
       });
 
       proc.on("close", (code) => {
-        this.processes.delete(fileId);
+        this.processes.delete(storageId);
 
         if (code === 0) {
-          logger.info("Transcode completed", { fileId, outputPath });
+          logger.info("Transcode completed", { storageId, outputPath });
           resolve({ success: true, outputPath, error: null });
         } else {
           const lastLines = stderr.split("\n").slice(-5).join("\n");
           logger.error("Transcode failed", {
-            fileId,
+            storageId,
             exitCode: code,
             lastLines,
           });
@@ -424,15 +480,18 @@ export class TranscodeManager {
       });
 
       proc.on("error", (err) => {
-        this.processes.delete(fileId);
-        logger.error("Transcode spawn error", { fileId, error: err.message });
+        this.processes.delete(storageId);
+        logger.error("Transcode spawn error", {
+          storageId,
+          error: err.message,
+        });
         resolve({ success: false, outputPath: null, error: err.message });
       });
     });
   }
 
-  async cancelTranscoding(fileId: string): Promise<{ cancelled: boolean }> {
-    const proc = this.processes.get(fileId);
+  async cancelTranscoding(storageId: string): Promise<{ cancelled: boolean }> {
+    const proc = this.processes.get(storageId);
     if (!proc) {
       return { cancelled: false };
     }
@@ -446,8 +505,8 @@ export class TranscodeManager {
       }
     }, 5000);
 
-    this.processes.delete(fileId);
-    logger.info("Cancelled transcoding", { fileId });
+    this.processes.delete(storageId);
+    logger.info("Cancelled transcoding", { storageId });
     return { cancelled: true };
   }
 }
