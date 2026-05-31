@@ -6,10 +6,20 @@ import * as fs from "fs";
 import { getMainWindow } from "./window";
 import { pathToFileURL, fileURLToPath } from "url";
 import { TranscodeManager } from "./transcoding/TranscodeManager";
+import { CdRipperManager } from "./transcoding/CdRipperManager";
 import { TranscodingConfig } from "./transcoding/types";
 import { idFromPath } from "@vrs/file-id/node";
 
 const transcodeManager: TranscodeManager = new TranscodeManager({
+  enabled: false,
+  mode: "local",
+  encoderPath: "",
+  gpuAcceleration: true,
+  maxVideoHeight: null,
+  outputDirectory: "",
+});
+
+const cdRipperManager = new CdRipperManager({
   enabled: false,
   mode: "local",
   encoderPath: "",
@@ -284,6 +294,22 @@ export function setupIpcHandlers(): void {
   );
 
   ipcMain.handle(
+    "test-cyanrip-path",
+    async (
+      _event,
+      { ripperPath, config }: { ripperPath: string; config: TranscodingConfig },
+    ) => {
+      try {
+        transcodeManager.updateConfig(config);
+        return await cdRipperManager.testCyanRipPath(ripperPath);
+      } catch (err) {
+        log.error("test-cyanrip-path failed", err);
+        return { success: false, version: null };
+      }
+    },
+  );
+
+  ipcMain.handle(
     "delete-file",
     async (_event, { filePath }: { filePath: string }) => {
       try {
@@ -295,4 +321,35 @@ export function setupIpcHandlers(): void {
       }
     },
   );
+
+  // CD Ripping IPC
+  ipcMain.handle(
+    "cd-rip-dry-run",
+    async (
+      _event,
+      {
+        config,
+        releaseChoice,
+      }: { config: TranscodingConfig; releaseChoice?: number },
+    ) => {
+      return await cdRipperManager.cdRipDryRun(config, releaseChoice);
+    },
+  );
+
+  ipcMain.handle(
+    "start-cd-rip",
+    async (
+      _event,
+      {
+        config,
+        releaseChoice,
+      }: { config: TranscodingConfig; releaseChoice?: number },
+    ) => {
+      return await cdRipperManager.startCdRip(config, releaseChoice);
+    },
+  );
+
+  ipcMain.handle("cancel-cd-rip", async () => {
+    return await cdRipperManager.cancelCdRip();
+  });
 }

@@ -7,6 +7,8 @@ export interface TranscodingConfig {
   gpuAcceleration: boolean;
   maxVideoHeight: number | null;
   outputDirectory: string;
+  ripperPath?: string;
+  driveOffset?: number;
 }
 
 export type TranscodeJobStatus =

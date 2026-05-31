@@ -51,8 +51,31 @@ const api = {
     ipcRenderer.invoke("test-gpu-encoder", { encoderName, config }),
   testFfmpegPath: (encoderPath: string, config: TranscodingConfig) =>
     ipcRenderer.invoke("test-ffmpeg-path", { encoderPath, config }),
+  testCyanRipPath: (ripperPath: string, config: TranscodingConfig) =>
+    ipcRenderer.invoke("test-cyanrip-path", { ripperPath, config }),
   deleteFile: (filePath: string) =>
     ipcRenderer.invoke("delete-file", { filePath }),
+
+  // CD Ripping API
+  cdRipDryRun: (config: TranscodingConfig, releaseChoice?: number) =>
+    ipcRenderer.invoke("cd-rip-dry-run", { config, releaseChoice }),
+  startCdRip: (config: TranscodingConfig, releaseChoice?: number) =>
+    ipcRenderer.invoke("start-cd-rip", { config, releaseChoice }),
+  cancelCdRip: () => ipcRenderer.invoke("cancel-cd-rip"),
+  onCdRipProgress: (
+    callback: (progress: {
+      percent: number;
+      stage: string;
+      fileId: string;
+    }) => void,
+  ) => {
+    const handler = (
+      _event: unknown,
+      data: { percent: number; stage: string; fileId: string },
+    ) => callback(data);
+    ipcRenderer.on("cd-rip-progress", handler);
+    return () => ipcRenderer.removeListener("cd-rip-progress", handler);
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);
