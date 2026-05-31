@@ -242,43 +242,71 @@ export class CdRipperManager {
 
       const fileId = "cd-rip-job";
 
+      let currentPercent = 0;
+      let currentStage = "Starting...";
+      let currentEta = "";
+      let buffer = "";
+
+      const handleData = (data: Buffer | string) => {
+        buffer += data.toString();
+        const parts = buffer.split(/[\r\n]+/);
+
+        buffer = parts.pop() || "";
+
+        for (const msg of parts) {
+          const line = msg.trim();
+          if (!line) continue;
+
+          // Parse track info
+          const trackMatch = line.match(/track (\d+)/i);
+          let trackStr = "Ripping...";
+          if (trackMatch) {
+            trackStr = `Ripping Track ${trackMatch[1]}`;
+          } else if (currentStage.startsWith("Ripping Track")) {
+            trackStr = currentStage.split(" (ETA")[0];
+          }
+
+          // Parse ETA
+          const etaMatch = line.match(/ETA\s*-\s*([^,\r\n]+)/i);
+          if (etaMatch) {
+            currentEta = etaMatch[1].trim();
+          }
+
+          currentStage = currentEta
+            ? `${trackStr} (ETA: ${currentEta})`
+            : trackStr;
+
+          // Parse progress percentage
+          const percentMatch = line.match(/progress\s*-\s*([\d.]+)%/i);
+          if (percentMatch) {
+            currentPercent = parseFloat(percentMatch[1]);
+          }
+
+          getMainWindow()?.webContents.send("cd-rip-progress", {
+            fileId,
+            percent: currentPercent,
+            stage: currentStage,
+            output: line,
+          });
+        }
+      };
+
       this.currentProcess.stderr?.on("data", (data) => {
         stderr += data.toString();
-        // Just emit a simple progress event (CyanRip output is tricky to parse percent exactly, so we'll just indicate it is ripping)
-        // If there's specific output like "Track X/Y" we could parse it, but for now just send stage: "Ripping" and let frontend show indeterminate or basic progress
-        const msg = data.toString();
-        let percent = 50; // indeterminate
-        const trackMatch = msg.match(/Track (\d+)/);
-        if (trackMatch) {
-          // roughly parse track number
-          percent = Math.min(99, parseInt(trackMatch[1], 10) * 5); // very rough estimate
-        }
-
-        getMainWindow()?.webContents.send("cd-rip-progress", {
-          fileId,
-          percent,
-          stage: "Ripping",
-        });
+        handleData(data);
       });
 
       this.currentProcess.stdout?.on("data", (data) => {
         output += data.toString();
-        const msg = data.toString();
-        let percent = 50;
-        const trackMatch = msg.match(/Track (\d+)/);
-        if (trackMatch) {
-          percent = Math.min(99, parseInt(trackMatch[1], 10) * 5);
-        }
-        getMainWindow()?.webContents.send("cd-rip-progress", {
-          fileId,
-          percent,
-          stage: "Ripping",
-        });
+        handleData(data);
       });
 
       this.currentProcess.on("close", (code) => {
         this.currentProcess = null;
-        if (code === 0) {
+        const wasCancelled = this.isCancelling;
+        this.isCancelling = false; // Reset
+
+        if (code === 0 && !wasCancelled) {
           getMainWindow()?.webContents.send("cd-rip-progress", {
             fileId,
             percent: 100,
@@ -289,7 +317,19 @@ export class CdRipperManager {
             outputPath: specificOutputDir,
             error: null,
           });
+        } else if (wasCancelled) {
+          resolve({
+            success: false,
+            outputPath: null,
+            error: "Cancelled",
+          });
         } else {
+          getMainWindow()?.webContents.send("cd-rip-progress", {
+            fileId,
+            percent: currentPercent,
+            stage: "failed",
+            output: `Failed with code ${code}: ${stderr}`,
+          });
           resolve({
             success: false,
             outputPath: null,
@@ -300,16 +340,25 @@ export class CdRipperManager {
 
       this.currentProcess.on("error", (err) => {
         this.currentProcess = null;
+        getMainWindow()?.webContents.send("cd-rip-progress", {
+          fileId,
+          percent: currentPercent,
+          stage: "failed",
+          output: err.message,
+        });
         resolve({ success: false, outputPath: null, error: err.message });
       });
     });
   }
+
+  private isCancelling: boolean = false;
 
   async cancelCdRip(): Promise<{ cancelled: boolean; error?: string }> {
     if (!this.currentProcess) {
       return { cancelled: false, error: "No CD rip in progress" };
     }
 
+    this.isCancelling = true;
     this.currentProcess.kill("SIGTERM");
 
     // Force kill if necessary
@@ -339,7 +388,7 @@ export class CdRipperManager {
     getMainWindow()?.webContents.send("cd-rip-progress", {
       fileId: "cd-rip-job",
       percent: 0,
-      stage: "failed",
+      stage: "cancelled",
     });
 
     return { cancelled: true };

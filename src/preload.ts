@@ -67,11 +67,12 @@ const api = {
       percent: number;
       stage: string;
       fileId: string;
+      output?: string;
     }) => void,
   ) => {
     const handler = (
       _event: unknown,
-      data: { percent: number; stage: string; fileId: string },
+      data: { percent: number; stage: string; fileId: string; output?: string },
     ) => callback(data);
     ipcRenderer.on("cd-rip-progress", handler);
     return () => ipcRenderer.removeListener("cd-rip-progress", handler);
