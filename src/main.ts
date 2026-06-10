@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from "electron";
+import { app, BrowserWindow, globalShortcut, powerMonitor } from "electron";
 import { autoUpdater } from "electron-updater";
 import log from "electron-log";
 import { createWindow } from "./window";
@@ -30,6 +30,18 @@ app.whenReady().then(() => {
   setupStreamHandler();
   createWindow();
   setupAutoUpdater();
+
+  powerMonitor.on("resume", () => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send("power-resume");
+    });
+  });
+
+  powerMonitor.on("suspend", () => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send("power-suspend");
+    });
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

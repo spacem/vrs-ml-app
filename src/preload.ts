@@ -39,6 +39,18 @@ const api = {
     ipcRenderer.on("update-downloaded", (_event, info) => callback(info));
   },
 
+  onPowerResume: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("power-resume", handler);
+    return () => ipcRenderer.removeListener("power-resume", handler);
+  },
+
+  onPowerSuspend: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("power-suspend", handler);
+    return () => ipcRenderer.removeListener("power-suspend", handler);
+  },
+
   // Transcoding API
   transcodeFile: (
     storageId: string,
